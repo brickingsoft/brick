@@ -1,18 +1,14 @@
 package mosses_test
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"runtime"
 	"testing"
-	"text/tabwriter"
 	"time"
 
 	"github.com/brickingsoft/brick/pkg/mosses"
-	"golang.org/x/term"
 )
 
 var (
@@ -129,9 +125,6 @@ func TestNewColorfulTextRecordEncoder(t *testing.T) {
 	p := encoder.Encode(record)
 
 	fmt.Println(string(p))
-
-	//fmt.Println()
-	//t.Log(string(p))
 }
 
 func TestNewJsonRecordEncoder(t *testing.T) {
@@ -140,27 +133,4 @@ func TestNewJsonRecordEncoder(t *testing.T) {
 		b := encoder.Encode(record)
 		t.Log(string(b))
 	}
-}
-
-func TestNewTextHandler(t *testing.T) {
-	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-	buf := bytes.NewBuffer(nil)
-	w := tabwriter.NewWriter(buf, 0, 0, 1, ' ', tabwriter.AlignRight)
-	fmt.Fprintln(w, "Hello\tWorld\t")
-	fmt.Fprintln(w, "Go\tLanguage\t")
-	w.Flush()
-
-	fmt.Println(buf.String())
-
-	str1 := "Hello"
-	str2 := "World"
-	fmt.Printf("%10s%10s\n", str1, str2)
-
-	width, _, err := term.GetSize(int(os.Stdout.Fd()))
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	text := "Hello"
-	fmt.Printf("%*s\n", width, text)
 }
