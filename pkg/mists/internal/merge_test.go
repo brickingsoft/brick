@@ -4,7 +4,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/brickingsoft/brick/pkg/configs/internal"
+	"github.com/brickingsoft/brick/pkg/mists/internal"
 	"github.com/goccy/go-yaml/parser"
 )
 

@@ -1,4 +1,4 @@
-package configs
+package mists
 
 import (
 	"github.com/goccy/go-yaml"

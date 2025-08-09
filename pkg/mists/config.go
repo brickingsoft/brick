@@ -1,73 +1,15 @@
-package configs
+package mists
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"io"
 	"strings"
 
-	"github.com/brickingsoft/brick/pkg/configs/internal"
+	"github.com/brickingsoft/brick/pkg/mists/internal"
 	"github.com/goccy/go-yaml"
 	"github.com/goccy/go-yaml/ast"
 	"github.com/goccy/go-yaml/parser"
 )
-
-func New(raw []byte) (config *Config, err error) {
-	if len(raw) == 0 {
-		config = &Config{
-			raw: []byte{'{', '}'},
-		}
-		return
-	}
-	file, parseErr := parser.ParseBytes(raw, 0)
-	if parseErr != nil {
-		err = parseErr
-		return
-	}
-	if len(file.Docs) == 0 {
-		config = &Config{
-			raw: []byte{'{', '}'},
-		}
-		return
-	}
-	body := file.Docs[0].Body
-	if body == nil {
-		config = &Config{
-			raw: []byte{'{', '}'},
-		}
-		return
-	}
-	anchors, anchorsErr := internal.Anchors(body)
-	if anchorsErr != nil {
-		err = anchorsErr
-		return
-	}
-
-	if len(anchors) > 0 {
-		ctx := context.TODO()
-		replaceErr := internal.AliasReplaceAnchor(ctx, body, anchors)
-		if replaceErr != nil {
-			err = replaceErr
-			return
-		}
-	}
-	bodyBytes, readErr := io.ReadAll(body)
-	if readErr != nil {
-		if errors.Is(readErr, io.EOF) {
-			config = &Config{
-				raw: []byte{'{', '}'},
-			}
-			return
-		}
-		err = readErr
-		return
-	}
-	config = &Config{
-		raw: bodyBytes,
-	}
-	return
-}
 
 type Raw []byte
 
@@ -80,7 +22,7 @@ func (cfg *Config) Decode(v any) (err error) {
 	return
 }
 
-func (cfg *Config) Bytes() (b []byte) {
+func (cfg *Config) Raw() (b Raw) {
 	b = make([]byte, len(cfg.raw))
 	copy(b, cfg.raw)
 	return
@@ -90,7 +32,7 @@ func (cfg *Config) String() string {
 	return string(cfg.raw)
 }
 
-func (cfg *Config) Node(name string) (target *Config, has bool) {
+func (cfg *Config) Node(name string) (target Mist, has bool) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return
@@ -133,7 +75,7 @@ func (cfg *Config) Node(name string) (target *Config, has bool) {
 	return
 }
 
-func (cfg *Config) Range(iter func(item *Config) (stop bool)) (err error) {
+func (cfg *Config) Range(iter func(item Mist) (stop bool)) (err error) {
 	file, parseErr := parser.ParseBytes(cfg.raw, 0)
 	if parseErr != nil {
 		err = parseErr
@@ -164,7 +106,7 @@ func (cfg *Config) Range(iter func(item *Config) (stop bool)) (err error) {
 	return
 }
 
-func (cfg *Config) Path(expr string) (target *Config, err error) {
+func (cfg *Config) Path(expr string) (target Mist, err error) {
 	path, pathErr := yaml.PathString(expr)
 	if pathErr != nil {
 		err = pathErr
@@ -186,11 +128,11 @@ func (cfg *Config) Path(expr string) (target *Config, err error) {
 	return
 }
 
-func (cfg *Config) Merge(target *Config) (err error) {
+func (cfg *Config) Merge(target Mist) (err error) {
 	if target == nil {
 		return
 	}
-	src, srcErr := parser.ParseBytes(target.Bytes(), 0)
+	src, srcErr := parser.ParseBytes(target.Raw(), 0)
 	if srcErr != nil {
 		err = srcErr
 		return
@@ -198,13 +140,13 @@ func (cfg *Config) Merge(target *Config) (err error) {
 	if len(src.Docs) == 0 || src.Docs[0] == nil {
 		return
 	}
-	dst, dstErr := parser.ParseBytes(cfg.Bytes(), 0)
+	dst, dstErr := parser.ParseBytes(cfg.Raw(), 0)
 	if dstErr != nil {
 		err = dstErr
 		return
 	}
 	if len(dst.Docs) == 0 || dst.Docs[0] == nil {
-		cfg.raw = target.Bytes()
+		cfg.raw = target.Raw()
 		return
 	}
 	dstBody := dst.Docs[0].Body

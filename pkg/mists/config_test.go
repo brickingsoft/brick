@@ -1,9 +1,9 @@
-package configs_test
+package mists_test
 
 import (
 	"testing"
 
-	"github.com/brickingsoft/brick/pkg/configs"
+	"github.com/brickingsoft/brick/pkg/mists"
 )
 
 const (
@@ -45,7 +45,7 @@ c:
 )
 
 func TestNew(t *testing.T) {
-	rootConfig, rootErr := configs.New([]byte(root))
+	rootConfig, rootErr := mists.New([]byte(root))
 	if rootErr != nil {
 		t.Fatal(rootErr)
 	}
@@ -53,11 +53,11 @@ func TestNew(t *testing.T) {
 }
 
 func TestConfig_Merge(t *testing.T) {
-	rootConfig, rootErr := configs.New([]byte(root))
+	rootConfig, rootErr := mists.New([]byte(root))
 	if rootErr != nil {
 		t.Fatal(rootErr)
 	}
-	targetConfig, targetErr := configs.New([]byte(target))
+	targetConfig, targetErr := mists.New([]byte(target))
 	if targetErr != nil {
 		t.Fatal(targetErr)
 	}
@@ -65,5 +65,5 @@ func TestConfig_Merge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(string(rootConfig.Bytes()))
+	t.Log(string(rootConfig.Raw()))
 }
