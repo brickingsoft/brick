@@ -1,6 +1,8 @@
 package mosses
 
-import "time"
+import (
+	"time"
+)
 
 type Attribute struct {
 	Key   string
@@ -59,8 +61,12 @@ const (
 	errAttrKey = "error"
 )
 
-func Error(err error) Attribute {
+func Err(err error) Attribute {
 	return Attribute{Key: errAttrKey, Value: err}
+}
+
+func Any(v any) Attribute {
+	return Attribute{Key: errAttrKey, Value: v}
 }
 
 type Group struct {
@@ -79,17 +85,17 @@ func (group *Group) MergeAttributes(attrs []Attribute) {
 	}
 	merged := false
 	for _, attr := range attrs {
-		for _, exist := range group.Attrs {
+		for i, exist := range group.Attrs {
 			if exist.Key == attr.Key {
-				exist.Value = attr.Value
+				group.Attrs[i].Value = attr.Value
 				merged = true
 				break
 			}
 		}
 		if merged {
+			merged = false
 			continue
 		}
-		merged = false
 		group.Attrs = append(group.Attrs, attr)
 	}
 }

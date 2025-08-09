@@ -44,7 +44,7 @@ func (l Level) Validate() bool {
 
 func (l Level) Enabled(target Level) bool {
 	if l.Validate() {
-		return target <= l
+		return l <= target
 	}
 	return false
 }

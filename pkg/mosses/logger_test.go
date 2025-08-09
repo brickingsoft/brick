@@ -14,7 +14,8 @@ func TestNew(t *testing.T) {
 		t.Fatal(logErr)
 	}
 	defer log.Close()
-	log = log.Group("test").Attr(mosses.String("hello", "world"))
+	log = log.Group("g1").Attr(mosses.String("hello", "world"))
+	log = log.Group("g2").Attr(mosses.String("hello", "world")).Attr(mosses.String("hello", "mosses"), mosses.Int("int", 1))
 	ctx := context.Background()
 	log.Info(ctx, "hello")
 	log.Info(ctx, "world")

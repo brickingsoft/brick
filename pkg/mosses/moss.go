@@ -30,8 +30,19 @@ func (moss *Moss) Group(name string) Logger {
 }
 
 func (moss *Moss) Attr(attrs ...Attribute) Logger {
-	moss.group.MergeAttributes(attrs)
-	return moss
+	group := Group{
+		Name:   moss.group.Name,
+		Attrs:  moss.group.Attrs,
+		Parent: moss.group.Parent,
+	}
+	group.MergeAttributes(attrs)
+	return &Moss{
+		level:           moss.level,
+		sourced:         moss.sourced,
+		callerSkipShift: 0,
+		group:           group,
+		handler:         moss.handler,
+	}
 }
 
 func (moss *Moss) CallerSkipShift(shift int) Logger {
