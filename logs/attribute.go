@@ -71,6 +71,11 @@ func Duration(key string, value time.Duration) Attribute {
 }
 
 func Err(err error) Attribute {
-	attr := mosses.Error(err)
+	attr := mosses.Err(err)
+	return Attribute{attr}
+}
+
+func Any(value any) Attribute {
+	attr := mosses.Any(value)
 	return Attribute{attr}
 }
