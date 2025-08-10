@@ -2,8 +2,6 @@ package b3
 
 import (
 	"context"
-
-	"github.com/brickingsoft/brick/b3/pkg/log"
 )
 
 func Brick(ctx context.Context, options ...Option) (err error) {
@@ -14,9 +12,6 @@ func Brick(ctx context.Context, options ...Option) (err error) {
 			return
 		}
 	}
-	// logger
-	ctx = log.New(ctx, opts.LogLevel)
-	log.Debug(ctx, "...")
 
 	return
 }
