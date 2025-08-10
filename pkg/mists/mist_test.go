@@ -52,7 +52,7 @@ func TestNew(t *testing.T) {
 	t.Log(rootConfig)
 }
 
-func TestConfig_Merge(t *testing.T) {
+func TestMist_Merge(t *testing.T) {
 	rootConfig, rootErr := mists.New([]byte(root))
 	if rootErr != nil {
 		t.Fatal(rootErr)
@@ -65,5 +65,5 @@ func TestConfig_Merge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Log(string(rootConfig.Raw()))
+	t.Log(string(rootConfig.Bytes()))
 }
