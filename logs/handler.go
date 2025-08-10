@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brickingsoft/brick/pkg/mists"
+	"github.com/brickingsoft/brick/configs"
 	"github.com/brickingsoft/brick/pkg/mosses"
 )
 
-type HandlerBuilder func(config mists.Mist) (handler mosses.Handler, err error)
+type HandlerBuilder func(config configs.Config) (handler mosses.Handler, err error)
 
 var (
 	handlerBuilders = make(map[string]HandlerBuilder)
@@ -35,11 +35,10 @@ type StandardOutHandlerOptions struct {
 type HandlerOptions struct {
 	Name    string              `json:"name" yaml:"name"`
 	Async   AsyncHandlerOptions `json:"async" yaml:"async"`
-	Options mists.Raw           `json:"options" yaml:"options"`
+	Options configs.Config      `json:"options" yaml:"options"`
 }
 
 func newHandler(options HandlerOptions) mosses.Handler {
-
 	name := strings.TrimSpace(options.Name)
 	if name == "" {
 		name = "stdout"
@@ -48,11 +47,7 @@ func newHandler(options HandlerOptions) mosses.Handler {
 	switch name {
 	case "stdout":
 		stdoutOptions := StandardOutHandlerOptions{}
-		stdoutConfig, stdoutConfigErr := mists.New(options.Options)
-		if stdoutConfigErr != nil {
-			panic(fmt.Sprintf("brick: unable to read log handler options for %s, %v", name, stdoutConfigErr))
-		}
-		if decodeErr := stdoutConfig.Decode(&options); decodeErr != nil {
+		if decodeErr := options.Options.As(&options); decodeErr != nil {
 			panic(fmt.Sprintf("brick: unable to decode log handler options for %s, %v", name, decodeErr))
 		}
 		encoder := strings.TrimSpace(stdoutOptions.Encoder)
@@ -76,12 +71,8 @@ func newHandler(options HandlerOptions) mosses.Handler {
 		if builder == nil {
 			panic(fmt.Sprintf("brick: no log handler builder registered for %s", name))
 		}
-		handlerConfig, handlerConfigErr := mists.New(options.Options)
-		if handlerConfigErr != nil {
-			panic(fmt.Sprintf("brick: unable to load handler configuration for %s, %v", name, handlerConfigErr))
-		}
 		var buildErr error
-		handler, buildErr = builder(handlerConfig)
+		handler, buildErr = builder(options.Options)
 		if buildErr != nil {
 			panic(fmt.Sprintf("brick: unable to build log handler by registered for %s, %v", name, buildErr))
 		}
