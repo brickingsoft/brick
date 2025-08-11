@@ -22,11 +22,17 @@ func RegisterCustomUnmarshaler[T any](unmarshaler func(r *T, b []byte) error) {
 }
 
 func Valid(b []byte) bool {
-
 	if _, err := parser.ParseBytes(b, 0); err != nil {
 		return false
 	}
 	return true
+}
+
+func Empty() (mist *Mist) {
+	mist = &Mist{
+		raw: []byte{'{', '}'},
+	}
+	return
 }
 
 // New
@@ -34,9 +40,7 @@ func Valid(b []byte) bool {
 // create Mist from yaml
 func New(b []byte) (mist *Mist, err error) {
 	if len(b) == 0 {
-		mist = &Mist{
-			raw: []byte{'{', '}'},
-		}
+		mist = Empty()
 		return
 	}
 	file, parseErr := parser.ParseBytes(b, 0)
@@ -45,16 +49,12 @@ func New(b []byte) (mist *Mist, err error) {
 		return
 	}
 	if len(file.Docs) == 0 {
-		mist = &Mist{
-			raw: []byte{'{', '}'},
-		}
+		mist = Empty()
 		return
 	}
 	body := file.Docs[0].Body
 	if body == nil {
-		mist = &Mist{
-			raw: []byte{'{', '}'},
-		}
+		mist = Empty()
 		return
 	}
 	anchors, anchorsErr := internal.Anchors(body)
@@ -74,9 +74,7 @@ func New(b []byte) (mist *Mist, err error) {
 	bodyBytes, readErr := io.ReadAll(body)
 	if readErr != nil {
 		if errors.Is(readErr, io.EOF) {
-			mist = &Mist{
-				raw: []byte{'{', '}'},
-			}
+			mist = Empty()
 			return
 		}
 		err = readErr
@@ -236,4 +234,8 @@ func (cfg *Mist) Merge(target *Mist) (err error) {
 	}
 	cfg.raw = b
 	return
+}
+
+func (cfg *Mist) Empty() bool {
+	return len(cfg.raw) == 0 || bytes.Equal(cfg.raw, []byte{'{', '}'})
 }
