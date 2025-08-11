@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/brickingsoft/brick/signal"
+	"github.com/brickingsoft/brick/launch/signal"
 )
 
 type Sever struct {
