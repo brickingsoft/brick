@@ -10,6 +10,10 @@ import (
 	"github.com/brickingsoft/brick/transports"
 )
 
+type EndpointInitializer interface {
+	Init(ctx context.Context) (err error)
+}
+
 type Endpoint interface {
 	Name() string
 	Handle(ctx RequestCtx)
