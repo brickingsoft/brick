@@ -17,10 +17,10 @@ var (
 func TestNewFileMultiLevelRetriever(t *testing.T) {
 	os.Args = []string{os.Args[0]}
 	t.Log("os.Args", os.Args)
-	r := configs.NewFileMultiLevelRetriever(configs.WithRetrieverDir("./testcases"))
+	r := configs.MultiLevelRetriever(configs.WithRetrieverDir("./testcases"))
 	testFileMultiLevelRetrieverRetrieve(t, r)
 
-	r = configs.NewFileMultiLevelRetriever(configs.WithRetrieverEmbedDir(&testcases))
+	r = configs.MultiLevelRetriever(configs.WithRetrieverEmbedDir(&testcases))
 	testFileMultiLevelRetrieverRetrieve(t, r)
 }
 

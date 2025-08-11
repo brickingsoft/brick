@@ -58,34 +58,34 @@ func WithRetrieverEmbedDir(dir *embed.FS) RetrieverOption {
 	}
 }
 
-func NewFileMultiLevelRetriever(options ...RetrieverOption) Retriever {
+func MultiLevelRetriever(options ...RetrieverOption) Retriever {
 	opts := &RetrieverOptions{
 		Dir: os.DirFS("configs.d"),
 	}
 	for _, option := range options {
 		if err := option(opts); err != nil {
-			return &FileMultiLevelRetriever{
+			return &multiLevelConfigRetriever{
 				err: err,
 			}
 		}
 	}
 	if opts.Dir == nil {
-		return &FileMultiLevelRetriever{
+		return &multiLevelConfigRetriever{
 			err: errors.New("dir is nil"),
 		}
 	}
-	return &FileMultiLevelRetriever{
+	return &multiLevelConfigRetriever{
 		dir: opts.Dir,
 		err: nil,
 	}
 }
 
-type FileMultiLevelRetriever struct {
+type multiLevelConfigRetriever struct {
 	dir fs.FS
 	err error
 }
 
-func (retriever *FileMultiLevelRetriever) Retrieve(_ context.Context) (config *Config, err error) {
+func (retriever *multiLevelConfigRetriever) Retrieve(_ context.Context) (config *Config, err error) {
 	if retriever.err != nil {
 		err = errors.Join(errors.New("retriever config failed"), retriever.err)
 		return
@@ -171,7 +171,7 @@ func (retriever *FileMultiLevelRetriever) Retrieve(_ context.Context) (config *C
 	return
 }
 
-func (retriever *FileMultiLevelRetriever) readConfig(name string) (config *Config, err error) {
+func (retriever *multiLevelConfigRetriever) readConfig(name string) (config *Config, err error) {
 	b, readErr := fs.ReadFile(retriever.dir, name)
 	if readErr != nil {
 		err = readErr
@@ -181,7 +181,7 @@ func (retriever *FileMultiLevelRetriever) readConfig(name string) (config *Confi
 	return
 }
 
-func (retriever *FileMultiLevelRetriever) active() (active string, err error) {
+func (retriever *multiLevelConfigRetriever) active() (active string, err error) {
 	active = os.Getenv("BRICK_ACTIVE")
 	active = strings.TrimSpace(active)
 	if active != "" {

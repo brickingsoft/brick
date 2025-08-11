@@ -26,24 +26,28 @@ func (config *Config) Bytes() []byte {
 	return config.mist.Bytes()
 }
 
-func (config *Config) Node(name string) (node *Config, has bool) {
-	n, exist := config.mist.Node(name)
-	if exist {
+func (config *Config) Node(name string) (node *Config) {
+	if n, exist := config.mist.Node(name); exist {
 		node = &Config{mist: n}
-		has = true
 		return
 	}
+	node = &Config{mist: mists.Empty()}
 	return
 }
 
 func (config *Config) Path(expr string) (node *Config, err error) {
 	n, pathErr := config.mist.Path(expr)
 	if pathErr != nil {
+		node = &Config{mist: mists.Empty()}
 		err = pathErr
 		return
 	}
 	node = &Config{mist: n}
 	return
+}
+
+func (config *Config) Empty() bool {
+	return config.mist.Empty()
 }
 
 func (config *Config) Merge(target *Config) error {
