@@ -33,7 +33,7 @@ type Option func(options *Options) (err error)
 func WithLevel(level Level) Option {
 	return func(options *Options) (err error) {
 		if !level.Validate() {
-			err = errors.New("mosses: invalid level")
+			err = errors.New("invalid level")
 			return
 		}
 		options.Level = level
@@ -58,7 +58,7 @@ func WithGroup(group string) Option {
 func WithHandler(handler Handler) Option {
 	return func(options *Options) (err error) {
 		if handler == nil {
-			err = errors.New("mosses: missing handler")
+			err = errors.New("missing handler")
 			return
 		}
 		options.Handler = handler
@@ -75,7 +75,7 @@ func New(options ...Option) (logger Logger, err error) {
 	}
 	for _, opt := range options {
 		if err = opt(&opts); err != nil {
-			err = errors.New("mosses: new failed, " + err.Error())
+			err = errors.Join(errors.New("new moss logger failed"), err)
 			return
 		}
 	}
