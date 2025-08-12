@@ -14,19 +14,49 @@ import (
 	"github.com/fatih/color"
 )
 
+var (
+	_mod     = ""
+	_modOnce = sync.Once{}
+)
+
+func modulePath() string {
+	_modOnce.Do(func() {
+		if info, ok := debug.ReadBuildInfo(); ok {
+			_mod = info.Main.Path
+		}
+	})
+	return _mod
+}
+
 type Source struct {
 	Function string
 	File     string
 	Line     int
 }
 
-func (src *Source) RelativePath(mod string) string {
-	if mod == "" {
-		return src.relativePathByFunction()
-	}
-	i := strings.LastIndex(src.File, mod)
+func (src *Source) RelativePath() string {
+	i := strings.LastIndex(src.Function, "/")
 	if i == -1 {
-		return src.relativePathByFunction()
+		if mod := modulePath(); mod != "" {
+			i = strings.LastIndex(src.File, mod)
+			if i == -1 {
+				return src.File
+			}
+			return src.File[i:]
+		}
+		return src.File
+	}
+	pkg := src.Function[:i]
+	i = strings.LastIndex(src.File, pkg)
+	if i == -1 {
+		if mod := modulePath(); mod != "" {
+			i = strings.LastIndex(src.File, mod)
+			if i == -1 {
+				return src.File
+			}
+			return src.File[i:]
+		}
+		return src.File
 	}
 	return src.File[i:]
 }
@@ -34,12 +64,12 @@ func (src *Source) RelativePath(mod string) string {
 func (src *Source) relativePathByFunction() string {
 	i := strings.LastIndex(src.Function, "/")
 	if i == -1 {
-		return src.File
+		return ""
 	}
 	pkg := src.Function[:i]
 	i = strings.LastIndex(src.File, pkg)
 	if i == -1 {
-		return src.File
+		return ""
 	}
 	return src.File[i:]
 }
@@ -66,22 +96,13 @@ type RecordEncoder interface {
 	Encode(r *Record) []byte
 }
 
-func getModPath() string {
-	if info, ok := debug.ReadBuildInfo(); ok {
-		return info.Main.Path
-	}
-	return ""
-}
-
 func NewTextRecordEncoder() RecordEncoder {
 	return &TextRecordEncoder{
-		mod:     getModPath(),
 		buffers: bufferPool{},
 	}
 }
 
 type TextRecordEncoder struct {
-	mod     string
 	buffers bufferPool
 }
 
@@ -106,7 +127,7 @@ func (encoder *TextRecordEncoder) Encode(r *Record) []byte {
 			fileLineCap = 30
 		)
 		src := r.Source()
-		file := src.RelativePath(encoder.mod)
+		file := src.RelativePath()
 		fileLen := len(file)
 		if fileLen < fileLineCap {
 			file = fmt.Sprintf("%*s", fileLineCap, file)
@@ -175,7 +196,6 @@ func NewColorfulTextRecordEncoder() RecordEncoder {
 		colorful: Colorful{
 			paint: newColorfulPaint(),
 		},
-		mod:     getModPath(),
 		buffers: bufferPool{},
 	}
 }
@@ -237,7 +257,6 @@ type ColorfulPaint struct {
 
 type ColorfulTextRecordEncoder struct {
 	colorful Colorful
-	mod      string
 	buffers  bufferPool
 }
 
@@ -289,7 +308,7 @@ func (encoder *ColorfulTextRecordEncoder) Encode(r *Record) []byte {
 		_, _ = encoder.colorful.paint.function.Fprint(buf, src.Function)
 		_, _ = encoder.colorful.paint.symbol.Fprint(buf, "]")
 		buf.WriteByte('\n')
-		file := src.RelativePath(encoder.mod)
+		file := src.RelativePath()
 		_, _ = encoder.colorful.paint.symbol.Fprint(buf, "[ ")
 		_, _ = encoder.colorful.paint.fileLine.Fprintf(buf, "%s:%d", file, src.Line)
 		_, _ = encoder.colorful.paint.symbol.Fprint(buf, " ]")
@@ -357,13 +376,11 @@ func (encoder *ColorfulTextRecordEncoder) Encode(r *Record) []byte {
 
 func NewJsonRecordEncoder() RecordEncoder {
 	return &JsonRecordEncoder{
-		mod:     getModPath(),
 		buffers: bufferPool{},
 	}
 }
 
 type JsonRecordEncoder struct {
-	mod     string
 	buffers bufferPool
 }
 
@@ -429,7 +446,7 @@ func (encoder *JsonRecordEncoder) Encode(r *Record) []byte {
 		buf.WriteByte(':')
 		buf.WriteByte(' ')
 		buf.WriteByte('"')
-		file := src.RelativePath(encoder.mod)
+		file := src.RelativePath()
 		buf.WriteString(file)
 		buf.WriteByte('"')
 		buf.WriteByte(',')
