@@ -6,6 +6,7 @@ require (
 	github.com/fatih/color v1.18.0
 	github.com/goccy/go-yaml v1.18.0
 	github.com/mattn/go-colorable v0.1.14
+	github.com/urfave/cli/v3 v3.4.0
 )
 
 require (
