@@ -18,17 +18,17 @@ type loggerCtxKey struct {
 	name string
 }
 
-func With(ctx context.Context, logger mosses.Logger) context.Context {
+func With(ctx context.Context, logger Logger) context.Context {
 	ctx = context.WithValue(ctx, ctxKey, logger)
 	return ctx
 }
 
-func GetLogger(ctx context.Context) mosses.Logger {
+func GetLogger(ctx context.Context) Logger {
 	v := ctx.Value(ctxKey)
 	if v == nil {
 		panic("brick: no logger in context")
 	}
-	logger, ok := v.(mosses.Logger)
+	logger, ok := v.(Logger)
 	if !ok {
 		panic("brick: invalid logger in context")
 	}
