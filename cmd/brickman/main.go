@@ -28,9 +28,8 @@ func main() {
 				Usage:   "switch log level",
 				Aliases: []string{"l"},
 				Validator: func(s string) error {
-					s = strings.TrimSpace(s)
-					s = strings.ToLower(s)
-					switch s {
+					level := strings.ToLower(strings.TrimSpace(s))
+					switch level {
 					case "debug":
 					case "info":
 					case "warn":
