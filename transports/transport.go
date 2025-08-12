@@ -16,8 +16,9 @@ type Client interface {
 }
 
 type Transport interface {
+	Name() string
 	Listen(ctx context.Context, handler ServeHandler) (err error)
-	Connect(ctx context.Context) (client Client, err error)
+	Connect(ctx context.Context, address string) (client Client, err error)
 	Close() (err error)
 }
 
