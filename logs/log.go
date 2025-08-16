@@ -57,7 +57,8 @@ func Moss(options ...MossBuilderOption) (builder Builder) {
 			handlerBuilder = mossStdoutHandlerBuilder
 		}
 		mossConfig := MossConfig{}
-		if err = config.Node("logger").As(&mossConfig); err != nil {
+		node := config.Node("logger")
+		if err = node.As(&mossConfig); err != nil {
 			err = errors.Join(errors.New("build moss logger failed"), err)
 			return
 		}

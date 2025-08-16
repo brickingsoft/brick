@@ -26,12 +26,12 @@ func (config *Config) Bytes() []byte {
 	return config.mist.Bytes()
 }
 
-func (config *Config) Node(name string) (node *Config) {
+func (config *Config) Node(name string) (node Config) {
 	if n, exist := config.mist.Node(name); exist {
-		node = &Config{mist: n}
+		node = Config{mist: n}
 		return
 	}
-	node = &Config{mist: mists.Empty()}
+	node = Config{mist: mists.Empty()}
 	return
 }
 
