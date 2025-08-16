@@ -2,6 +2,7 @@ package logs
 
 import (
 	"context"
+	"errors"
 
 	"github.com/brickingsoft/brick/pkg/mosses"
 )
@@ -26,11 +27,11 @@ func With(ctx context.Context, logger Logger) context.Context {
 func GetLogger(ctx context.Context) Logger {
 	v := ctx.Value(ctxKey)
 	if v == nil {
-		panic("brick: no logger in context")
+		panic(errors.New("context does not contain a logger"))
 	}
 	logger, ok := v.(Logger)
 	if !ok {
-		panic("brick: invalid logger in context")
+		panic(errors.New("context contains a invalid typed logger"))
 	}
 	return logger
 }
