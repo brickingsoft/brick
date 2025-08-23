@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/brickingsoft/brick/pkg/fs/mem"
 )
 
 type Retriever interface {
@@ -54,6 +56,16 @@ func WithRetrieverEmbedDir(dir *embed.FS) RetrieverOption {
 			return subErr
 		}
 		options.Dir = sub
+		return nil
+	}
+}
+
+func WithRetrieverMemDir(dir *mem.Dir) RetrieverOption {
+	return func(options *RetrieverOptions) error {
+		if dir == nil {
+			return errors.New("dir is nil")
+		}
+		options.Dir = dir
 		return nil
 	}
 }

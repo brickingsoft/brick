@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/brickingsoft/brick/configs"
+	"github.com/brickingsoft/brick/rpc/configs"
 )
 
 var (

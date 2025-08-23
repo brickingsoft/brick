@@ -3,7 +3,7 @@ package configs_test
 import (
 	"testing"
 
-	"github.com/brickingsoft/brick/configs"
+	"github.com/brickingsoft/brick/rpc/configs"
 	"github.com/goccy/go-yaml"
 )
 
