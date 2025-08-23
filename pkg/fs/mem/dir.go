@@ -108,6 +108,13 @@ func (d *Dir) AddFile(name string, b []byte) error {
 	if fileErr != nil {
 		return fileErr
 	}
+	return d.Add(file)
+}
+
+func (d *Dir) Add(file *File) error {
+	if file == nil {
+		return os.ErrInvalid
+	}
 	d.entries = append(d.entries, &DirEntry{
 		value: file,
 	})
