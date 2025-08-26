@@ -12,7 +12,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/valyala/bytebufferpool"
+	"github.com/brickingsoft/brick/pkg/bytebuffer"
 )
 
 var (
@@ -162,10 +162,10 @@ func (e *Error) Format(state fmt.State, verb rune) {
 	case 'v':
 		switch {
 		case state.Flag('+'):
-			buf := bytebufferpool.Get()
+			buf := bytebuffer.Acquire()
 			format(buf, e, nil)
-			b := buf.Bytes()
-			bytebufferpool.Put(buf)
+			b := buf.Peek()
+			bytebuffer.Release(buf)
 			_, _ = state.Write(b)
 			break
 		default:
@@ -189,7 +189,7 @@ const (
 	spaceKey    = "     "
 )
 
-func format(buf *bytebufferpool.ByteBuffer, err *Error, layers []int) {
+func format(buf *bytebuffer.Buffer, err *Error, layers []int) {
 	/* fmt
 		[ error    ] [key=value, ...]
 		[ position ] [ fn ] [ file:line ]

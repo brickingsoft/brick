@@ -5,7 +5,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/brickingsoft/brick/endpoints/errors"
+	"github.com/brickingsoft/brick/rpc/errors"
 )
 
 func TestIs(t *testing.T) {
