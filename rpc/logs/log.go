@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/brickingsoft/brick/configs"
 	"github.com/brickingsoft/brick/pkg/mosses"
+	"github.com/brickingsoft/brick/rpc/configs"
 )
 
 type Logger interface {
