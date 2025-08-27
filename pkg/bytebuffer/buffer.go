@@ -139,7 +139,7 @@ func (buf *Buffer) Seek(offset int64, whence int) (n int64, err error) {
 	}
 }
 
-func (buf *Buffer) Clone() []byte {
+func (buf *Buffer) CloneBytes() []byte {
 	bLen := buf.Len()
 	if bLen == 0 {
 		return nil

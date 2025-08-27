@@ -17,5 +17,5 @@ func TestBuffer_Read(t *testing.T) {
 	_, _ = buf.Write(rb[:rbn])
 	b, rErr := io.ReadAll(buf)
 	_, _ = buf.Seek(0, io.SeekStart)
-	t.Log(bytes.Equal(b, buf.Clone()), rErr)
+	t.Log(bytes.Equal(b, buf.CloneBytes()), rErr)
 }
