@@ -4,7 +4,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"errors"
 	"hash"
@@ -63,15 +63,15 @@ func (s *ECDSASignet) Print(b []byte) (signature []byte) {
 	if err != nil {
 		panic(err)
 	}
-	signature = make([]byte, base64.URLEncoding.EncodedLen(len(v)))
-	base64.URLEncoding.Encode(signature, v)
+	signature = make([]byte, hex.EncodedLen(len(v)))
+	hex.Encode(signature, v)
 	s.releaseHash(h)
 	return
 }
 
 func (s *ECDSASignet) Verify(b []byte, signature []byte) bool {
-	dst := make([]byte, base64.URLEncoding.DecodedLen(len(signature)))
-	n, err := base64.URLEncoding.Decode(dst, signature)
+	dst := make([]byte, hex.DecodedLen(len(signature)))
+	n, err := hex.Decode(dst, signature)
 	if err != nil {
 		return false
 	}

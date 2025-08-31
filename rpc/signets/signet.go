@@ -1,12 +1,15 @@
 package signets
 
 import (
+	"context"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/sha512"
 	"hash"
 
+	"github.com/brickingsoft/brick/rpc/configs"
+	"github.com/brickingsoft/brick/rpc/logs"
 	"github.com/cespare/xxhash/v2"
 )
 
@@ -14,6 +17,14 @@ type Signet interface {
 	Print(b []byte) (signature []byte)
 	Verify(b []byte, signature []byte) bool
 }
+
+type Options struct {
+	Logger logs.Logger
+	Hash   HashBuilder
+	Config configs.Config
+}
+
+type Builder func(ctx context.Context, options Options) (Signet, error)
 
 type HashBuilder func() hash.Hash
 

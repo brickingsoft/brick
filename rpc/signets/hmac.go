@@ -2,7 +2,7 @@ package signets
 
 import (
 	"crypto/hmac"
-	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"hash"
 	"sync"
@@ -45,15 +45,15 @@ func (s *HMACSignet) Print(b []byte) (signature []byte) {
 	h := s.acquireHash()
 	h.Write(b)
 	v := h.Sum(nil)
-	signature = make([]byte, base64.URLEncoding.EncodedLen(len(v)))
-	base64.URLEncoding.Encode(signature, v)
+	signature = make([]byte, hex.EncodedLen(len(v)))
+	hex.Encode(signature, v)
 	s.releaseHash(h)
 	return
 }
 
 func (s *HMACSignet) Verify(b []byte, signature []byte) bool {
-	dst := make([]byte, base64.URLEncoding.DecodedLen(len(signature)))
-	n, err := base64.URLEncoding.Decode(dst, signature)
+	dst := make([]byte, hex.DecodedLen(len(signature)))
+	n, err := hex.Decode(dst, signature)
 	if err != nil {
 		return false
 	}
