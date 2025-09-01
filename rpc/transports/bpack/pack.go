@@ -23,12 +23,14 @@ const (
 )
 
 const (
-	DefaultMaxHeaderSize = 8 * 1024
+	DefaultMaxHeaderSize      = 8 * 1024
+	maxHeaderFieldContentSize = 32 * 1024 * 1024
 )
 
 type Options struct {
-	maxHeaderSize int
-	fields        []HeaderField
+	maxHeaderSize             int
+	maxHeaderFieldContentSize int
+	fields                    []HeaderField
 }
 
 type Option func(*Options) error
@@ -59,6 +61,10 @@ func Field(name string, values ...string) Option {
 				break
 			}
 		}
+		o.maxHeaderFieldContentSize += len(name)
+		if o.maxHeaderFieldContentSize > maxHeaderFieldContentSize {
+			return errors.New("max header field content size exceeds limit")
+		}
 		o.fields = append(o.fields, HeaderField{Name: name})
 		if len(values) == 0 {
 			if exist {
@@ -76,6 +82,11 @@ func Field(name string, values ...string) Option {
 				return hf.Name == name && bytes.Equal(hf.Value, vp)
 			}) {
 				continue
+			}
+			o.maxHeaderFieldContentSize += len(name)
+			o.maxHeaderFieldContentSize += len(vp)
+			if o.maxHeaderFieldContentSize > maxHeaderFieldContentSize {
+				return errors.New("max header field content size exceeds limit")
 			}
 			o.fields = append(o.fields, HeaderField{Name: name, Value: vp})
 		}
@@ -119,14 +130,7 @@ func (pack *Pack) EncodeTo(w io.Writer, iter HeaderIterator) (err error) {
 	}
 	buf := bytebuffers.Acquire()
 	defer bytebuffers.Release(buf)
-	defer buf.Discard(buf.Len())
 
-	sp, spErr := buf.Borrow(2)
-	if spErr != nil {
-		err = spErr
-		return
-	}
-	buf.Return(2)
 	for name, value := range iter {
 		if len(name) == 0 {
 			err = errors.New("bpack encode to empty name")
@@ -150,12 +154,30 @@ func (pack *Pack) EncodeTo(w io.Writer, iter HeaderIterator) (err error) {
 		err = errors.New("bpack encode to larger than maxHeaderBytes")
 		return
 	}
+
+	spp := acquireBytes()
+	defer releaseBytes(spp)
+	sp := (*spp)[:2]
 	binary.LittleEndian.PutUint16(sp, uint16(bLen))
+	for wn := 0; wn < 2; {
+		n, wErr := w.Write(sp[wn:])
+		if wErr != nil {
+			err = wErr
+			return
+		}
+		wn += n
+	}
+
 	_, err = buf.WriteTo(w)
 	return
 }
 
 func (pack *Pack) writeLiteral(b bytebuffers.Buffer, p []byte) {
+	if len(p) == 0 {
+		np := quicvarint.Append(nil, uint64(0))
+		_, _ = b.Write(np)
+		return
+	}
 	s := unsafe.String(unsafe.SliceData(p), len(p))
 	sp := hpack.AppendHuffmanString(nil, s)
 	np := quicvarint.Append(nil, uint64(len(sp)))
@@ -194,34 +216,32 @@ func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
 	buf := bytebuffers.Acquire()
 	defer bytebuffers.Release(buf)
 
-	h, hErr := buf.Borrow(2)
+	hn, rhErr := buf.ReadFromLimited(r, 2)
+	if hn != 2 {
+		if rhErr != nil {
+			err = rhErr
+			return
+		}
+		err = errors.New("bpack decode to invalid header length size")
+		return
+	}
+	h, hErr := buf.Next(2)
 	if hErr != nil {
 		err = hErr
 		return
 	}
-	buf.Return(2)
-	_, lnRErr := io.ReadFull(r, h)
-	if lnRErr != nil {
-		err = lnRErr
-		return
-	}
 	bLen := binary.LittleEndian.Uint16(h)
-	buf.Discard(2)
-
 	if bLen == 0 {
 		return
 	}
 
-	b, bErr := buf.Borrow(int(bLen))
-	if bErr != nil {
-		err = bErr
-		return
-	}
-	buf.Return(int(bLen))
-
-	_, rbErr := io.ReadFull(r, b)
-	if rbErr != nil {
-		err = rbErr
+	bn, rbErr := buf.ReadFromLimited(r, int(bLen))
+	if bn != int(bLen) {
+		if rbErr != nil {
+			err = rbErr
+			return
+		}
+		err = errors.New("bpack decode to invalid header body size")
 		return
 	}
 
@@ -247,6 +267,9 @@ func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
 		}
 	}
 
+	if errors.Is(err, io.EOF) {
+		err = nil
+	}
 	return
 }
 
@@ -254,6 +277,9 @@ func (pack *Pack) readLiteral(b bytebuffers.Buffer) (p []byte, err error) {
 	n, nErr := quicvarint.Read(b)
 	if nErr != nil {
 		err = nErr
+		return
+	}
+	if n == 0 {
 		return
 	}
 	p, err = b.Next(int(n))
@@ -329,21 +355,34 @@ func (pack *Pack) DumpTo(w io.Writer) (err error) {
 	buf := bytebuffers.Acquire()
 	defer bytebuffers.Release(buf)
 
-	h, hErr := buf.Borrow(10)
-	if hErr != nil {
-		err = hErr
+	p, bErr := buf.Borrow(2)
+	if bErr != nil {
+		err = bErr
 		return
 	}
-	buf.Return(10)
-	binary.LittleEndian.PutUint16(h[:2], uint16(pack.maxHeaderBytes))
+	binary.LittleEndian.PutUint16(p, uint16(pack.maxHeaderBytes))
+	buf.Return(2)
 
 	pack.dict.Range(func(_ int, name []byte, value []byte) bool {
-		pack.writeLiteralFieldWithoutNameReference(buf, name, value)
+		pack.writeLiteral(buf, name)
+		pack.writeLiteral(buf, value)
 		return true
 	})
 
-	n := buf.Len() - 10
-	binary.LittleEndian.PutUint64(h[2:10], uint64(n))
+	n := buf.Len()
+	spp := acquireBytes()
+	defer releaseBytes(spp)
+	sp := (*spp)[:4]
+	binary.LittleEndian.PutUint32(sp, uint32(n))
+
+	for wn := 0; wn < 4; {
+		nn, wErr := w.Write(sp[wn:])
+		if wErr != nil {
+			err = wErr
+			return
+		}
+		wn += nn
+	}
 	_, err = buf.WriteTo(w)
 	return
 }
@@ -352,39 +391,64 @@ func (pack *Pack) LoadFrom(r io.Reader) (err error) {
 	buf := bytebuffers.Acquire()
 	defer bytebuffers.Release(buf)
 
-	h, hErr := buf.Borrow(10)
-	if hErr != nil {
-		err = hErr
-		return
-	}
-	buf.Return(10)
-	_, rhErr := io.ReadFull(r, h)
+	hn, rhErr := buf.ReadFromLimited(r, 4)
 	if rhErr != nil {
 		err = rhErr
 		return
 	}
-	maxHeaderSize := binary.LittleEndian.Uint16(h[:2])
+	if hn != 4 {
+		err = errors.New("bpack load from invalid size")
+		return
+	}
+	h, hErr := buf.Next(4)
+	if hErr != nil {
+		err = hErr
+		return
+	}
+	bLen := binary.LittleEndian.Uint32(h[:4])
 
-	bLen := binary.LittleEndian.Uint64(h[2:10])
 	if bLen == 0 {
 		return
 	}
-	buf.Discard(10)
-	b, bErr := buf.Borrow(int(bLen))
-	if bErr != nil {
-		err = bErr
+
+	bn, rbErr := buf.ReadFromLimited(r, int(bLen))
+	if bn != int(bLen) {
+		if rbErr != nil {
+			err = rbErr
+			return
+		}
+		err = errors.New("bpack load from invalid size")
 		return
 	}
-	buf.Return(int(bLen))
-	_, rbErr := io.ReadFull(r, b)
-	if rbErr != nil {
-		err = rbErr
+	mp, mpErr := buf.Next(2)
+	if mpErr != nil {
+		err = mpErr
 		return
 	}
+	maxHeaderSize := binary.LittleEndian.Uint16(mp)
+	bLen -= 2
 
 	hw := new(HeaderFields)
+	for {
+		name, nameErr := pack.readLiteral(buf)
+		if nameErr != nil {
+			err = nameErr
+			break
+		}
+		value, valueErr := pack.readLiteral(buf)
+		if valueErr != nil {
+			err = valueErr
+			break
+		}
+		if len(name) == 0 {
+			continue
+		}
+		hw.Set(name, value)
+	}
 
-	if err = pack.readLiteralFieldWithoutNameReference(buf, hw); err != nil {
+	if errors.Is(err, io.EOF) {
+		err = nil
+	} else {
 		return
 	}
 
