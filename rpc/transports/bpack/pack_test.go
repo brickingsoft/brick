@@ -13,8 +13,9 @@ type Header struct {
 	value http.Header
 }
 
-func (h *Header) Set(key []byte, value []byte) {
+func (h *Header) Set(key []byte, value []byte) error {
 	h.value.Set(string(key), string(value))
+	return nil
 }
 
 func (h *Header) Iterator() bpack.HeaderIterator {

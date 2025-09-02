@@ -173,16 +173,23 @@ func (pack *Pack) EncodeTo(w io.Writer, iter HeaderIterator) (err error) {
 }
 
 func (pack *Pack) writeLiteral(b bytebuffers.Buffer, p []byte) {
-	if len(p) == 0 {
-		np := quicvarint.Append(nil, uint64(0))
+	pLen := uint64(len(p))
+	if pLen == 0 {
+		np := quicvarint.Append(nil, pLen)
 		_, _ = b.Write(np)
 		return
 	}
-	s := unsafe.String(unsafe.SliceData(p), len(p))
-	sp := hpack.AppendHuffmanString(nil, s)
-	np := quicvarint.Append(nil, uint64(len(sp)))
-	_, _ = b.Write(np)
-	_, _ = b.Write(sp)
+	s := unsafe.String(unsafe.SliceData(p), pLen)
+	if hpack.HuffmanEncodeLength(s) < pLen {
+		sp := hpack.AppendHuffmanString(nil, s)
+		np := quicvarint.Append(nil, uint64(len(sp)))
+		_, _ = b.Write(np)
+		_, _ = b.Write(sp)
+	} else {
+		np := quicvarint.Append(nil, pLen)
+		_, _ = b.Write(np)
+		_, _ = b.Write(p)
+	}
 }
 
 func (pack *Pack) writeLiteralFieldWithoutNameReference(b bytebuffers.Buffer, name []byte, value []byte) {
@@ -205,7 +212,7 @@ func (pack *Pack) writeIndexedField(b bytebuffers.Buffer, i int) {
 }
 
 type HeaderWriter interface {
-	Set(key []byte, value []byte)
+	Set(key []byte, value []byte) error
 }
 
 func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
@@ -308,7 +315,7 @@ func (pack *Pack) readLiteralFieldWithoutNameReference(b bytebuffers.Buffer, hea
 		err = valueErr
 		return
 	}
-	header.Set(name, value)
+	err = header.Set(name, value)
 	return
 }
 
@@ -328,7 +335,7 @@ func (pack *Pack) readLiteralFieldWithNameReference(b bytebuffers.Buffer, header
 		err = valueErr
 		return
 	}
-	header.Set(name, value)
+	err = header.Set(name, value)
 	return
 }
 
@@ -343,7 +350,7 @@ func (pack *Pack) readIndexedField(b bytebuffers.Buffer, header HeaderWriter) (e
 		err = errors.New("bpack decode to header failed for dict unmatched")
 		return
 	}
-	header.Set(name, value)
+	err = header.Set(name, value)
 	return
 }
 
