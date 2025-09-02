@@ -54,7 +54,7 @@ func TestPack(t *testing.T) {
 	h.Set([]byte("f3"), []byte("f3-x"))
 	h.Set([]byte("fx"), []byte("fx-x"))
 
-	wErr := pack.EncodeTo(buf, h.Iterator())
+	wErr := pack.PackTo(buf, h.Iterator())
 	if wErr != nil {
 		t.Fatal(wErr)
 	}
@@ -65,7 +65,7 @@ func TestPack(t *testing.T) {
 		value: make(http.Header),
 	}
 
-	rErr := pack.DecodeFrom(buf, h2)
+	rErr := pack.UnpackFrom(buf, h2)
 	if rErr != nil {
 		t.Fatal(rErr)
 	}
@@ -114,7 +114,7 @@ func TestPack_DumpTo(t *testing.T) {
 	h.Set([]byte("f3"), []byte("f3-x"))
 	h.Set([]byte("fx"), []byte("fx-x"))
 
-	wErr := pack.EncodeTo(buf, h.Iterator())
+	wErr := pack.PackTo(buf, h.Iterator())
 	if wErr != nil {
 		t.Fatal(wErr)
 	}
@@ -125,7 +125,7 @@ func TestPack_DumpTo(t *testing.T) {
 		value: make(http.Header),
 	}
 
-	rErr := pack.DecodeFrom(buf, h2)
+	rErr := pack.UnpackFrom(buf, h2)
 	if rErr != nil {
 		t.Fatal(rErr)
 	}

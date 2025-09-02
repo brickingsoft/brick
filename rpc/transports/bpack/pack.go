@@ -94,7 +94,7 @@ func Field(name string, values ...string) Option {
 	}
 }
 
-func New(options ...Option) (pack *Pack, err error) {
+func New(options ...Option) (pack *Packer, err error) {
 	opts := &Options{
 		maxHeaderSize: DefaultMaxHeaderSize,
 		fields:        nil,
@@ -104,7 +104,7 @@ func New(options ...Option) (pack *Pack, err error) {
 			return
 		}
 	}
-	pack = &Pack{
+	pack = &Packer{
 		maxHeaderBytes: opts.maxHeaderSize,
 		dict:           new(Dictionary),
 	}
@@ -112,20 +112,20 @@ func New(options ...Option) (pack *Pack, err error) {
 	return
 }
 
-type Pack struct {
+type Packer struct {
 	maxHeaderBytes int
 	dict           *Dictionary
 }
 
 type HeaderIterator iter.Seq2[[]byte, []byte]
 
-func (pack *Pack) EncodeTo(w io.Writer, iter HeaderIterator) (err error) {
+func (packer *Packer) PackTo(w io.Writer, iter HeaderIterator) (err error) {
 	if w == nil {
-		err = errors.New("bpack encode to nil Writer")
+		err = errors.New("pack failed for writer is nil")
 		return
 	}
 	if iter == nil {
-		err = errors.New("bpack encode to nil HeaderIterator")
+		err = errors.New("pack failed for header iterator is nil")
 		return
 	}
 	buf := bytebuffers.Acquire()
@@ -133,25 +133,25 @@ func (pack *Pack) EncodeTo(w io.Writer, iter HeaderIterator) (err error) {
 
 	for name, value := range iter {
 		if len(name) == 0 {
-			err = errors.New("bpack encode to empty name")
+			err = errors.New("pack failed for one empty name")
 			return
 		}
 		if len(value) == 0 {
-			err = errors.New("bpack encode to empty value")
+			err = errors.New("pack failed for one empty value")
 			return
 		}
-		i, j := pack.dict.Index(name, value)
+		i, j := packer.dict.Index(name, value)
 		if i < 0 { // not found
-			pack.writeLiteralFieldWithoutNameReference(buf, name, value)
+			packer.writeLiteralFieldWithoutNameReference(buf, name, value)
 		} else if j < 0 { // found name
-			pack.writeLiteralFieldWithNameReference(buf, i, value)
+			packer.writeLiteralFieldWithNameReference(buf, i, value)
 		} else { // found name and value
-			pack.writeIndexedField(buf, j)
+			packer.writeIndexedField(buf, j)
 		}
 	}
 	bLen := buf.Len()
-	if bLen > pack.maxHeaderBytes {
-		err = errors.New("bpack encode to larger than maxHeaderBytes")
+	if bLen > packer.maxHeaderBytes {
+		err = errors.New("pack to larger than maxHeaderBytes")
 		return
 	}
 
@@ -172,7 +172,7 @@ func (pack *Pack) EncodeTo(w io.Writer, iter HeaderIterator) (err error) {
 	return
 }
 
-func (pack *Pack) writeLiteral(b bytebuffers.Buffer, p []byte) {
+func (packer *Packer) writeLiteral(b bytebuffers.Buffer, p []byte) {
 	pLen := uint64(len(p))
 	if pLen == 0 {
 		np := quicvarint.Append(nil, pLen)
@@ -192,20 +192,20 @@ func (pack *Pack) writeLiteral(b bytebuffers.Buffer, p []byte) {
 	}
 }
 
-func (pack *Pack) writeLiteralFieldWithoutNameReference(b bytebuffers.Buffer, name []byte, value []byte) {
+func (packer *Packer) writeLiteralFieldWithoutNameReference(b bytebuffers.Buffer, name []byte, value []byte) {
 	_ = b.WriteByte(literalFieldWithoutNameReference)
-	pack.writeLiteral(b, name)
-	pack.writeLiteral(b, value)
+	packer.writeLiteral(b, name)
+	packer.writeLiteral(b, value)
 }
 
-func (pack *Pack) writeLiteralFieldWithNameReference(b bytebuffers.Buffer, i int, value []byte) {
+func (packer *Packer) writeLiteralFieldWithNameReference(b bytebuffers.Buffer, i int, value []byte) {
 	_ = b.WriteByte(literalFieldWithNameReference)
 	p := quicvarint.Append(nil, uint64(i))
 	_, _ = b.Write(p)
-	pack.writeLiteral(b, value)
+	packer.writeLiteral(b, value)
 }
 
-func (pack *Pack) writeIndexedField(b bytebuffers.Buffer, i int) {
+func (packer *Packer) writeIndexedField(b bytebuffers.Buffer, i int) {
 	_ = b.WriteByte(indexField)
 	p := quicvarint.Append(nil, uint64(i))
 	_, _ = b.Write(p)
@@ -215,9 +215,13 @@ type HeaderWriter interface {
 	Set(key []byte, value []byte) error
 }
 
-func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
+func (packer *Packer) UnpackFrom(r io.Reader, header HeaderWriter) (err error) {
+	if r == nil {
+		err = errors.New("unpack failed for reader is nil")
+		return
+	}
 	if header == nil {
-		err = errors.New("bpack decode to nil Header")
+		err = errors.New("unpack failed for header writer is nil")
 		return
 	}
 	buf := bytebuffers.Acquire()
@@ -226,10 +230,10 @@ func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
 	hn, rhErr := buf.ReadFromLimited(r, 2)
 	if hn != 2 {
 		if rhErr != nil {
-			err = rhErr
+			err = errors.Join(errors.New("unpack failed"), rhErr)
 			return
 		}
-		err = errors.New("bpack decode to invalid header length size")
+		err = errors.New("unpack failed for invalid header length size")
 		return
 	}
 	h, hErr := buf.Next(2)
@@ -245,10 +249,10 @@ func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
 	bn, rbErr := buf.ReadFromLimited(r, int(bLen))
 	if bn != int(bLen) {
 		if rbErr != nil {
-			err = rbErr
+			err = errors.Join(errors.New("unpack failed"), rbErr)
 			return
 		}
-		err = errors.New("bpack decode to invalid header body size")
+		err = errors.New("unpack failed for invalid header body size")
 		return
 	}
 
@@ -260,27 +264,29 @@ func (pack *Pack) DecodeFrom(r io.Reader, header HeaderWriter) (err error) {
 		}
 		switch k {
 		case indexField:
-			err = pack.readIndexedField(buf, header)
+			err = packer.readIndexedField(buf, header)
 			break
 		case literalFieldWithNameReference:
-			err = pack.readLiteralFieldWithNameReference(buf, header)
+			err = packer.readLiteralFieldWithNameReference(buf, header)
 			break
 		case literalFieldWithoutNameReference:
-			err = pack.readLiteralFieldWithoutNameReference(buf, header)
+			err = packer.readLiteralFieldWithoutNameReference(buf, header)
 			break
 		default:
-			err = errors.New("bpack decode to header failed for unknown field kind")
+			err = errors.New("unknown field kind")
 			break
 		}
 	}
 
 	if errors.Is(err, io.EOF) {
 		err = nil
+	} else {
+		errors.Join(errors.New("unpack failed"), err)
 	}
 	return
 }
 
-func (pack *Pack) readLiteral(b bytebuffers.Buffer) (p []byte, err error) {
+func (packer *Packer) readLiteral(b bytebuffers.Buffer) (p []byte, err error) {
 	n, nErr := quicvarint.Read(b)
 	if nErr != nil {
 		err = nErr
@@ -304,13 +310,13 @@ func (pack *Pack) readLiteral(b bytebuffers.Buffer) (p []byte, err error) {
 	return
 }
 
-func (pack *Pack) readLiteralFieldWithoutNameReference(b bytebuffers.Buffer, header HeaderWriter) (err error) {
-	name, nameErr := pack.readLiteral(b)
+func (packer *Packer) readLiteralFieldWithoutNameReference(b bytebuffers.Buffer, header HeaderWriter) (err error) {
+	name, nameErr := packer.readLiteral(b)
 	if nameErr != nil {
 		err = nameErr
 		return
 	}
-	value, valueErr := pack.readLiteral(b)
+	value, valueErr := packer.readLiteral(b)
 	if valueErr != nil {
 		err = valueErr
 		return
@@ -319,18 +325,18 @@ func (pack *Pack) readLiteralFieldWithoutNameReference(b bytebuffers.Buffer, hea
 	return
 }
 
-func (pack *Pack) readLiteralFieldWithNameReference(b bytebuffers.Buffer, header HeaderWriter) (err error) {
+func (packer *Packer) readLiteralFieldWithNameReference(b bytebuffers.Buffer, header HeaderWriter) (err error) {
 	ni, niErr := quicvarint.Read(b)
 	if niErr != nil {
 		err = niErr
 		return
 	}
-	name, _ := pack.dict.Get(int(ni))
+	name, _ := packer.dict.Get(int(ni))
 	if len(name) == 0 {
-		err = errors.New("bpack decode to header failed for dict unmatched")
+		err = errors.New("read no name from dictionary")
 		return
 	}
-	value, valueErr := pack.readLiteral(b)
+	value, valueErr := packer.readLiteral(b)
 	if valueErr != nil {
 		err = valueErr
 		return
@@ -339,26 +345,26 @@ func (pack *Pack) readLiteralFieldWithNameReference(b bytebuffers.Buffer, header
 	return
 }
 
-func (pack *Pack) readIndexedField(b bytebuffers.Buffer, header HeaderWriter) (err error) {
+func (packer *Packer) readIndexedField(b bytebuffers.Buffer, header HeaderWriter) (err error) {
 	ni, niErr := quicvarint.Read(b)
 	if niErr != nil {
 		err = niErr
 		return
 	}
-	name, value := pack.dict.Get(int(ni))
+	name, value := packer.dict.Get(int(ni))
 	if len(name) == 0 || len(value) == 0 {
-		err = errors.New("bpack decode to header failed for dict unmatched")
+		err = errors.New("read nothing from dictionary")
 		return
 	}
 	err = header.Set(name, value)
 	return
 }
 
-func (pack *Pack) Reset(fields []HeaderField) {
-	pack.dict.Load(fields)
+func (packer *Packer) Reset(fields []HeaderField) {
+	packer.dict.Load(fields)
 }
 
-func (pack *Pack) DumpTo(w io.Writer) (err error) {
+func (packer *Packer) DumpTo(w io.Writer) (err error) {
 	buf := bytebuffers.Acquire()
 	defer bytebuffers.Release(buf)
 
@@ -367,12 +373,12 @@ func (pack *Pack) DumpTo(w io.Writer) (err error) {
 		err = bErr
 		return
 	}
-	binary.LittleEndian.PutUint16(p, uint16(pack.maxHeaderBytes))
+	binary.LittleEndian.PutUint16(p, uint16(packer.maxHeaderBytes))
 	buf.Return(2)
 
-	pack.dict.Range(func(_ int, name []byte, value []byte) bool {
-		pack.writeLiteral(buf, name)
-		pack.writeLiteral(buf, value)
+	packer.dict.Range(func(_ int, name []byte, value []byte) bool {
+		packer.writeLiteral(buf, name)
+		packer.writeLiteral(buf, value)
 		return true
 	})
 
@@ -394,7 +400,7 @@ func (pack *Pack) DumpTo(w io.Writer) (err error) {
 	return
 }
 
-func (pack *Pack) LoadFrom(r io.Reader) (err error) {
+func (packer *Packer) LoadFrom(r io.Reader) (err error) {
 	buf := bytebuffers.Acquire()
 	defer bytebuffers.Release(buf)
 
@@ -404,7 +410,7 @@ func (pack *Pack) LoadFrom(r io.Reader) (err error) {
 		return
 	}
 	if hn != 4 {
-		err = errors.New("bpack load from invalid size")
+		err = errors.New("packer load from invalid size")
 		return
 	}
 	h, hErr := buf.Next(4)
@@ -424,7 +430,7 @@ func (pack *Pack) LoadFrom(r io.Reader) (err error) {
 			err = rbErr
 			return
 		}
-		err = errors.New("bpack load from invalid size")
+		err = errors.New("packer load from invalid size")
 		return
 	}
 	mp, mpErr := buf.Next(2)
@@ -437,12 +443,12 @@ func (pack *Pack) LoadFrom(r io.Reader) (err error) {
 
 	hw := new(HeaderFields)
 	for {
-		name, nameErr := pack.readLiteral(buf)
+		name, nameErr := packer.readLiteral(buf)
 		if nameErr != nil {
 			err = nameErr
 			break
 		}
-		value, valueErr := pack.readLiteral(buf)
+		value, valueErr := packer.readLiteral(buf)
 		if valueErr != nil {
 			err = valueErr
 			break
@@ -459,7 +465,7 @@ func (pack *Pack) LoadFrom(r io.Reader) (err error) {
 		return
 	}
 
-	pack.maxHeaderBytes = int(maxHeaderSize)
-	pack.dict.Load(hw.fields)
+	packer.maxHeaderBytes = int(maxHeaderSize)
+	packer.dict.Load(hw.fields)
 	return
 }

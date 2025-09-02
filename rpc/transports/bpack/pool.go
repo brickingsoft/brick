@@ -6,17 +6,17 @@ type PackPool struct {
 	pool sync.Pool
 }
 
-func (pp *PackPool) Acquire() *Pack {
+func (pp *PackPool) Acquire() *Packer {
 	v := pp.pool.Get()
 	if v == nil {
 		p, _ := New()
 		return p
 	}
-	p := v.(*Pack)
+	p := v.(*Packer)
 	return p
 }
 
-func (pp *PackPool) Release(p *Pack) {
+func (pp *PackPool) Release(p *Packer) {
 	if p == nil {
 		return
 	}
@@ -28,10 +28,10 @@ var (
 	DefaultPool = PackPool{}
 )
 
-func Acquire() *Pack {
+func Acquire() *Packer {
 	return DefaultPool.Acquire()
 }
 
-func Release(p *Pack) {
+func Release(p *Packer) {
 	DefaultPool.Release(p)
 }
