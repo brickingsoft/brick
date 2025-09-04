@@ -16,6 +16,9 @@ type Moss struct {
 }
 
 func (moss *Moss) Group(name string) Logger {
+	if moss.group.Name == name {
+		return moss
+	}
 	return &Moss{
 		level:           moss.level,
 		sourced:         moss.sourced,
