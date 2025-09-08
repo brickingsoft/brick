@@ -3,10 +3,10 @@ package transports
 import (
 	"bytes"
 	"errors"
-	"iter"
 	"sync"
 	"unsafe"
 
+	"github.com/brickingsoft/brick/rpc/transports/bpack"
 	"github.com/quic-go/quic-go/quicvarint"
 )
 
@@ -25,7 +25,12 @@ var (
 	ContentEncodingHeaderStringKey = string(ContentEncodingHeaderKey)
 )
 
-type HeaderIterator iter.Seq2[[]byte, []byte]
+var (
+	SnappyContentEncodingValue       = []byte("snappy")
+	SnappyContentEncodingValueString = string(SnappyContentEncodingValue)
+)
+
+type HeaderIterator bpack.HeaderIterator
 
 type Agent struct {
 	id     []byte
@@ -163,6 +168,7 @@ type HeaderWriter interface {
 type Header interface {
 	HeaderReader
 	HeaderWriter
+	Reset()
 }
 
 type headerEntry struct {
@@ -417,4 +423,8 @@ func ReleaseHeader(h Header) {
 		hh.Reset()
 		headerPool.Put(hh)
 	}
+}
+
+func UintHeaderValue(u uint64) []byte {
+	return quicvarint.Append(nil, u)
 }
