@@ -11,8 +11,8 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/brickingsoft/brick/pkg/quicvarint"
 	"github.com/brickingsoft/bytebuffers"
-	"github.com/quic-go/quic-go/quicvarint"
 	"golang.org/x/net/http2/hpack"
 )
 
@@ -173,21 +173,19 @@ func (packer *Packer) PackTo(w io.Writer, iter HeaderIterator) (err error) {
 }
 
 func (packer *Packer) writeLiteral(b bytebuffers.Buffer, p []byte) {
+
 	pLen := uint64(len(p))
 	if pLen == 0 {
-		np := quicvarint.Append(nil, pLen)
-		_, _ = b.Write(np)
+		_, _ = quicvarint.Write(b, pLen)
 		return
 	}
 	s := unsafe.String(unsafe.SliceData(p), pLen)
 	if hpack.HuffmanEncodeLength(s) < pLen {
 		sp := hpack.AppendHuffmanString(nil, s)
-		np := quicvarint.Append(nil, uint64(len(sp)))
-		_, _ = b.Write(np)
+		_, _ = quicvarint.Write(b, uint64(len(sp)))
 		_, _ = b.Write(sp)
 	} else {
-		np := quicvarint.Append(nil, pLen)
-		_, _ = b.Write(np)
+		_, _ = quicvarint.Write(b, pLen)
 		_, _ = b.Write(p)
 	}
 }
@@ -200,15 +198,13 @@ func (packer *Packer) writeLiteralFieldWithoutNameReference(b bytebuffers.Buffer
 
 func (packer *Packer) writeLiteralFieldWithNameReference(b bytebuffers.Buffer, i int, value []byte) {
 	_ = b.WriteByte(literalFieldWithNameReference)
-	p := quicvarint.Append(nil, uint64(i))
-	_, _ = b.Write(p)
+	_, _ = quicvarint.Write(b, uint64(i))
 	packer.writeLiteral(b, value)
 }
 
 func (packer *Packer) writeIndexedField(b bytebuffers.Buffer, i int) {
 	_ = b.WriteByte(indexField)
-	p := quicvarint.Append(nil, uint64(i))
-	_, _ = b.Write(p)
+	_, _ = quicvarint.Write(b, uint64(i))
 }
 
 type HeaderWriter interface {
