@@ -29,11 +29,15 @@ var (
 	ContentEncodingHeaderStringKey = string(ContentEncodingHeaderKey)
 	SignatureHeaderKey             = []byte("signature")
 	SignatureHeaderStringKey       = string(SignatureHeaderKey)
+	fakeBodyHeaderKey              = []byte("fake-body")
+	fakeBodyHeaderStringKey        = string(fakeBodyHeaderKey)
 )
 
 var (
 	SnappyContentEncodingValue       = []byte("snappy")
 	SnappyContentEncodingValueString = string(SnappyContentEncodingValue)
+	fakeBodyHeaderValue              = []byte("1")
+	fakeBodyHeaderValueString        = string(fakeBodyHeaderValue)
 )
 
 type HeaderValues struct {
@@ -50,6 +54,7 @@ var (
 		ContentTypeHeaderStringKey:     nil,
 		ContentEncodingHeaderStringKey: {SnappyContentEncodingValueString},
 		SignatureHeaderStringKey:       nil,
+		fakeBodyHeaderStringKey:        {fakeBodyHeaderValueString},
 	}
 )
 
