@@ -232,12 +232,10 @@ func (packer *Packer) UnpackFrom(r io.Reader, header HeaderWriter) (err error) {
 		err = errors.New("unpack failed for invalid header length size")
 		return
 	}
-	h, hErr := buf.Next(2)
-	if hErr != nil {
-		err = hErr
-		return
-	}
+
+	h := buf.Peek(2)
 	bLen := binary.LittleEndian.Uint16(h)
+	buf.Discard(2)
 	if bLen == 0 {
 		return
 	}
