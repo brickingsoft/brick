@@ -3,11 +3,15 @@ package transports
 import (
 	"bytes"
 	"errors"
+	"io"
+	"slices"
+	"sort"
+	"strings"
 	"sync"
 	"unsafe"
 
+	"github.com/brickingsoft/brick/pkg/quicvarint"
 	"github.com/brickingsoft/brick/rpc/transports/bpack"
-	"github.com/quic-go/quic-go/quicvarint"
 )
 
 var (
@@ -23,12 +27,139 @@ var (
 	ContentTypeHeaderStringKey     = string(ContentTypeHeaderKey)
 	ContentEncodingHeaderKey       = []byte("content-encoding")
 	ContentEncodingHeaderStringKey = string(ContentEncodingHeaderKey)
+	SignatureHeaderKey             = []byte("signature")
+	SignatureHeaderStringKey       = string(SignatureHeaderKey)
 )
 
 var (
 	SnappyContentEncodingValue       = []byte("snappy")
 	SnappyContentEncodingValueString = string(SnappyContentEncodingValue)
 )
+
+type HeaderValues struct {
+	Name   string
+	Values []string
+}
+
+var (
+	builtinHeaderFieldMap = map[string][]string{
+		AgentHeaderStringKey:           nil,
+		ForwardedHeaderStringKey:       nil,
+		AuthorizationHeaderStringKey:   nil,
+		ContentLengthHeaderStringKey:   nil,
+		ContentTypeHeaderStringKey:     nil,
+		ContentEncodingHeaderStringKey: {SnappyContentEncodingValueString},
+		SignatureHeaderStringKey:       nil,
+	}
+)
+
+func RegisterBuiltinHeaderFields(name string, values ...string) {
+	name = strings.ToLower(strings.TrimSpace(name))
+	if name == "" {
+		return
+	}
+	builtins, has := builtinHeaderFieldMap[name]
+	if !has {
+		builtinHeaderFieldMap[name] = values
+		return
+	}
+	slices.Sort[[]string](builtins)
+	for _, value := range values {
+		if i, exist := slices.BinarySearch[[]string](builtins, value); exist {
+			values = slices.Delete[[]string](values, i, i+1)
+			continue
+		}
+	}
+	if valuesLen := len(values); valuesLen > 0 {
+		for _, value := range values {
+			builtins = append(builtins, value)
+		}
+		slices.Sort[[]string](builtins)
+	}
+}
+
+func builtinHeaderFields() []HeaderValues {
+	if len(builtinHeaderFieldMap) == 0 {
+		return make([]HeaderValues, 0)
+	}
+	headers := make([]HeaderValues, 0, len(builtinHeaderFieldMap))
+	for name, values := range builtinHeaderFieldMap {
+		slices.Sort[[]string](values)
+		headers = append(headers, HeaderValues{
+			Name:   name,
+			Values: values,
+		})
+	}
+	return headers
+}
+
+func newHeaderPacker(maxHeaderSize int, headers []HeaderValues) (packer *bpack.Packer, err error) {
+	fields := builtinHeaderFields()
+	builtinLen := len(fields)
+
+	for _, field := range headers {
+		field.Name = strings.ToLower(strings.TrimSpace(field.Name))
+		if field.Name == "" {
+			continue
+		}
+		if len(field.Values) > 0 {
+			values := make([]string, 0, len(field.Values))
+			for i, value := range field.Values {
+				value = strings.TrimSpace(value)
+				if value == "" {
+					continue
+				}
+				exist := false
+				for j := 0; j < i; j++ {
+					if strings.TrimSpace(field.Values[j]) == value {
+						exist = true
+						break
+					}
+				}
+				if exist {
+					continue
+				}
+				values = append(values, value)
+			}
+			field.Values = values
+			slices.Sort[[]string](field.Values)
+		}
+
+		var idx int = -1
+		for i := 0; i < builtinLen; i++ {
+			if fields[i].Name == field.Name {
+				idx = i
+				break
+			}
+		}
+		if idx == -1 {
+			fields = append(fields, field)
+			continue
+		}
+		builtin := fields[idx]
+		for _, value := range field.Values {
+			n := sort.SearchStrings(builtin.Values, value)
+			if n == len(builtin.Values) {
+				builtin.Values = append(builtin.Values, value)
+				slices.Sort[[]string](builtin.Values)
+				fields[idx] = builtin
+			}
+		}
+	}
+
+	options := make([]bpack.Option, 0, len(fields)+1)
+	options = append(options, bpack.MaxHeaderSize(maxHeaderSize))
+	for _, field := range fields {
+		if len(field.Values) > 0 {
+			options = append(options, bpack.Field(field.Name, field.Values...))
+		} else {
+			options = append(options, bpack.Field(field.Name))
+		}
+	}
+
+	packer, err = bpack.New(options...)
+	return
+}
 
 type HeaderIterator bpack.HeaderIterator
 
@@ -143,32 +274,23 @@ func (forwarded *Forwarded) Decode(p []byte) error {
 	return nil
 }
 
-type HeaderReader interface {
+type Header interface {
 	Agent() *Agent
-	Forwarded() *Forwarded
-	Authorization() []byte
-	ContentLength() uint64
-	ContentType() []byte
-	ContentEncoding() []byte
-	Get(key []byte) []byte
-	Iterator() HeaderIterator
-}
-
-type HeaderWriter interface {
 	SetAgent(id []byte, device []byte)
+	Forwarded() *Forwarded
 	AddForwarded(name []byte, host []byte, proto []byte)
+	Authorization() []byte
 	SetAuthorization(authorization []byte)
+	ContentLength() uint64
 	SetContentLength(length uint64)
+	ContentType() []byte
 	SetContentType(typ []byte)
+	ContentEncoding() []byte
 	SetContentEncoding(encoding []byte)
+	Get(key []byte) []byte
 	Set(key []byte, value []byte) error
 	Remove(key []byte)
-}
-
-type Header interface {
-	HeaderReader
-	HeaderWriter
-	Reset()
+	Iterator() HeaderIterator
 }
 
 type headerEntry struct {
@@ -401,6 +523,21 @@ func (h *header) Reset() {
 	if h.entries != nil {
 		h.entries = h.entries[:0]
 	}
+}
+
+func (h *header) Parse(r io.Reader, packer *bpack.Packer) (err error) {
+	if err = packer.UnpackFrom(r, h); err != nil {
+		err = errors.Join(ErrReadHeaderFailed, err)
+	}
+	return
+}
+
+func (h *header) Flush(w io.Writer, packer *bpack.Packer) (err error) {
+	iter := bpack.HeaderIterator(h.Iterator())
+	if err = packer.PackTo(w, iter); err != nil {
+		err = errors.Join(ErrWriteHeaderFailed, err)
+	}
+	return
 }
 
 var (
