@@ -3,12 +3,18 @@ package signets_test
 import (
 	"testing"
 
+	"github.com/brickingsoft/brick/rpc/configs"
 	"github.com/brickingsoft/brick/rpc/signets"
 )
 
 func TestHMAC(t *testing.T) {
-	key := []byte("secret_key")
-	signet, err := signets.HMAC(key, signets.XXHash)
+	config, _ := configs.NewConfig([]byte(`key: "secret_key"`))
+	options := signets.Options{
+		Logger: nil,
+		Config: config,
+	}
+	_, builder := signets.HMAC()
+	signet, err := builder(options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -20,8 +26,13 @@ func TestHMAC(t *testing.T) {
 
 // BenchmarkHMAC-20    	 8784438	       135.0 ns/op	      40 b/op	       4 allocs/op
 func BenchmarkHMAC(b *testing.B) {
-	key := []byte("secret_key")
-	signet, err := signets.HMAC(key, signets.XXHash)
+	config, _ := configs.NewConfig([]byte(`key: "secret_key"`))
+	options := signets.Options{
+		Logger: nil,
+		Config: config,
+	}
+	_, builder := signets.HMAC()
+	signet, err := builder(options)
 	if err != nil {
 		b.Fatal(err)
 	}

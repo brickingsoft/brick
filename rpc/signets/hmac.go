@@ -5,21 +5,45 @@ import (
 	"encoding/hex"
 	"errors"
 	"hash"
+	"strings"
 	"sync"
 )
 
-func HMAC(key []byte, builder HashBuilder) (Signet, error) {
-	if len(key) == 0 {
-		return nil, errors.Join(errors.New("failed to create hmac signet"), errors.New("key is missing"))
+type HMACSignetConfig struct {
+	Key  string `yaml:"key"`
+	Hash string `yaml:"hash"`
+}
+
+func HMAC() (string, Builder) {
+	return "hmac", func(options Options) (v Signet, err error) {
+		config := HMACSignetConfig{}
+		if err = options.Config.As(&config); err != nil {
+			err = errors.Join(errors.New("failed to create hmac signet"), err)
+			return
+		}
+		key := strings.TrimSpace(config.Key)
+		if key == "" {
+			err = errors.Join(errors.New("failed to create hmac signet"), errors.New("key is missing"))
+			return
+		}
+		hash0 := strings.TrimSpace(config.Hash)
+		if hash0 == "" {
+			hash0 = "xxhash"
+		}
+		hb := getHashBuilder(hash0)
+		if hb == nil {
+			err = errors.Join(errors.New("failed to create hmac signet"), errors.New("hash builder not found"))
+			return
+		}
+
+		v = &HMACSignet{
+			key:     []byte(key),
+			builder: hb,
+			pool:    sync.Pool{},
+		}
+
+		return
 	}
-	if builder == nil {
-		return nil, errors.Join(errors.New("failed to create hmac signet"), errors.New("hash builder is missing"))
-	}
-	return &HMACSignet{
-		key:     key,
-		builder: builder,
-		pool:    sync.Pool{},
-	}, nil
 }
 
 type HMACSignet struct {
