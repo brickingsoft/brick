@@ -2,6 +2,7 @@ package quicvarint
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 )
@@ -99,7 +100,7 @@ func Parse(b []byte) (uint64 /* value */, int /* bytes consumed */, error) {
 		return binary.BigEndian.Uint64(b) & 0x3fffffffffffffff, 8, nil
 	}
 
-	panic("unreachable")
+	return 0, 0, errors.New("unreachable")
 }
 
 // Append appends i in the QUIC varint format.
