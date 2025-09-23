@@ -59,7 +59,7 @@ func TestPack(t *testing.T) {
 		t.Fatal(wErr)
 	}
 
-	t.Log("encode:", buf.Len()) // encode: 22
+	t.Log("encode:", buf.Len()) // encode: 18
 
 	h2 := &Header{
 		value: make(http.Header),

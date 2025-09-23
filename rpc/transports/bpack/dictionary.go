@@ -13,8 +13,9 @@ type HeaderFields struct {
 	fields []HeaderField
 }
 
-func (h *HeaderFields) Set(name []byte, value []byte) {
+func (h *HeaderFields) Set(name []byte, value []byte) (err error) {
 	h.fields = append(h.fields, HeaderField{string(name), value})
+	return
 }
 
 type HeadValueIndex struct {

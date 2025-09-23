@@ -11,37 +11,29 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/brickingsoft/brick/pkg/quicvarint"
 	"github.com/brickingsoft/bytebuffers"
 	"golang.org/x/net/http2/hpack"
 )
 
 const (
-	literalFieldWithoutNameReference byte = 0x01
-	literalFieldWithNameReference    byte = 0x02
-	indexField                       byte = 0x03
-)
-
-const (
-	DefaultMaxHeaderSize      = 8 * 1024
-	maxHeaderFieldContentSize = 32 * 1024 * 1024
+	DefaultMaxHeaderSize = 8 * 1024
+	maxHeaderSize        = math.MaxUint16 - 2
 )
 
 type Options struct {
-	maxHeaderSize             int
-	maxHeaderFieldContentSize int
-	fields                    []HeaderField
+	maxHeaderSize int
+	fields        []HeaderField
 }
 
 type Option func(*Options) error
 
 func MaxHeaderSize(n int) Option {
 	return func(o *Options) error {
-		if n < 64 {
-			return errors.New("max header size must be at least 64")
+		if n < 1 {
+			n = DefaultMaxHeaderSize
 		}
-		if n > math.MaxUint16 {
-			return errors.New("max header size must be less than or equal to 63kb")
+		if n > maxHeaderSize {
+			return errors.New("max header size must be less than to 63kb")
 		}
 		o.maxHeaderSize = n
 		return nil
@@ -61,10 +53,6 @@ func Field(name string, values ...string) Option {
 				break
 			}
 		}
-		o.maxHeaderFieldContentSize += len(name)
-		if o.maxHeaderFieldContentSize > maxHeaderFieldContentSize {
-			return errors.New("max header field content size exceeds limit")
-		}
 		o.fields = append(o.fields, HeaderField{Name: name})
 		if len(values) == 0 {
 			if exist {
@@ -82,11 +70,6 @@ func Field(name string, values ...string) Option {
 				return hf.Name == name && bytes.Equal(hf.Value, vp)
 			}) {
 				continue
-			}
-			o.maxHeaderFieldContentSize += len(name)
-			o.maxHeaderFieldContentSize += len(vp)
-			if o.maxHeaderFieldContentSize > maxHeaderFieldContentSize {
-				return errors.New("max header field content size exceeds limit")
 			}
 			o.fields = append(o.fields, HeaderField{Name: name, Value: vp})
 		}
@@ -172,39 +155,35 @@ func (packer *Packer) PackTo(w io.Writer, iter HeaderIterator) (err error) {
 	return
 }
 
-func (packer *Packer) writeLiteral(b bytebuffers.Buffer, p []byte) {
-
+func (packer *Packer) writeLiteral(b bytebuffers.Buffer, prefix byte, n byte, p []byte) {
 	pLen := uint64(len(p))
 	if pLen == 0 {
-		_, _ = quicvarint.Write(b, pLen)
+		writeVarInt(b, prefix, n, pLen)
 		return
 	}
 	s := unsafe.String(unsafe.SliceData(p), pLen)
 	if hpack.HuffmanEncodeLength(s) < pLen {
 		sp := hpack.AppendHuffmanString(nil, s)
-		_, _ = quicvarint.Write(b, uint64(len(sp)))
+		writeVarInt(b, prefix, n, uint64(len(sp)))
 		_, _ = b.Write(sp)
 	} else {
-		_, _ = quicvarint.Write(b, pLen)
+		writeVarInt(b, prefix, n, pLen)
 		_, _ = b.Write(p)
 	}
 }
 
 func (packer *Packer) writeLiteralFieldWithoutNameReference(b bytebuffers.Buffer, name []byte, value []byte) {
-	_ = b.WriteByte(literalFieldWithoutNameReference)
-	packer.writeLiteral(b, name)
-	packer.writeLiteral(b, value)
+	packer.writeLiteral(b, 0x20^0x8, 3, name)
+	packer.writeLiteral(b, 0x80, 7, value)
 }
 
 func (packer *Packer) writeLiteralFieldWithNameReference(b bytebuffers.Buffer, i int, value []byte) {
-	_ = b.WriteByte(literalFieldWithNameReference)
-	_, _ = quicvarint.Write(b, uint64(i))
-	packer.writeLiteral(b, value)
+	writeVarInt(b, 0x50, 4, uint64(i))
+	packer.writeLiteral(b, 0x80, 7, value)
 }
 
 func (packer *Packer) writeIndexedField(b bytebuffers.Buffer, i int) {
-	_ = b.WriteByte(indexField)
-	_, _ = quicvarint.Write(b, uint64(i))
+	writeVarInt(b, 0xc0, 6, uint64(i))
 }
 
 type HeaderWriter interface {
@@ -250,28 +229,23 @@ func (packer *Packer) UnpackFrom(r io.Reader, header HeaderWriter) (err error) {
 		return
 	}
 
-	for err == nil {
-		k, kErr := buf.ReadByte()
-		if kErr != nil {
-			err = kErr
-			break
-		}
-		switch k {
-		case indexField:
+	for buf.Len() > 0 && err == nil {
+		prefix := buf.Peek(1)[0]
+		switch {
+		case prefix&0x80 > 0:
 			err = packer.readIndexedField(buf, header)
 			break
-		case literalFieldWithNameReference:
+		case prefix&0xc0 == 0x40:
 			err = packer.readLiteralFieldWithNameReference(buf, header)
 			break
-		case literalFieldWithoutNameReference:
+		case prefix&0xe0 == 0x20:
 			err = packer.readLiteralFieldWithoutNameReference(buf, header)
 			break
 		default:
 			err = errors.New("unknown field kind")
-			break
+			return
 		}
 	}
-
 	if errors.Is(err, io.EOF) {
 		err = nil
 	} else {
@@ -280,16 +254,16 @@ func (packer *Packer) UnpackFrom(r io.Reader, header HeaderWriter) (err error) {
 	return
 }
 
-func (packer *Packer) readLiteral(b bytebuffers.Buffer) (p []byte, err error) {
-	n, nErr := quicvarint.Read(b)
-	if nErr != nil {
-		err = nErr
+func (packer *Packer) readLiteral(b bytebuffers.Buffer, n byte) (p []byte, err error) {
+	i, iErr := readVarInt(b, n)
+	if iErr != nil {
+		err = iErr
 		return
 	}
-	if n == 0 {
+	if i == 0 {
 		return
 	}
-	p, err = b.Next(int(n))
+	p, err = b.Next(int(i))
 	if err != nil {
 		return
 	}
@@ -305,12 +279,12 @@ func (packer *Packer) readLiteral(b bytebuffers.Buffer) (p []byte, err error) {
 }
 
 func (packer *Packer) readLiteralFieldWithoutNameReference(b bytebuffers.Buffer, header HeaderWriter) (err error) {
-	name, nameErr := packer.readLiteral(b)
+	name, nameErr := packer.readLiteral(b, 3)
 	if nameErr != nil {
 		err = nameErr
 		return
 	}
-	value, valueErr := packer.readLiteral(b)
+	value, valueErr := packer.readLiteral(b, 7)
 	if valueErr != nil {
 		err = valueErr
 		return
@@ -320,7 +294,7 @@ func (packer *Packer) readLiteralFieldWithoutNameReference(b bytebuffers.Buffer,
 }
 
 func (packer *Packer) readLiteralFieldWithNameReference(b bytebuffers.Buffer, header HeaderWriter) (err error) {
-	ni, niErr := quicvarint.Read(b)
+	ni, niErr := readVarInt(b, 4)
 	if niErr != nil {
 		err = niErr
 		return
@@ -330,7 +304,7 @@ func (packer *Packer) readLiteralFieldWithNameReference(b bytebuffers.Buffer, he
 		err = errors.New("read no name from dictionary")
 		return
 	}
-	value, valueErr := packer.readLiteral(b)
+	value, valueErr := packer.readLiteral(b, 7)
 	if valueErr != nil {
 		err = valueErr
 		return
@@ -340,7 +314,7 @@ func (packer *Packer) readLiteralFieldWithNameReference(b bytebuffers.Buffer, he
 }
 
 func (packer *Packer) readIndexedField(b bytebuffers.Buffer, header HeaderWriter) (err error) {
-	ni, niErr := quicvarint.Read(b)
+	ni, niErr := readVarInt(b, 6)
 	if niErr != nil {
 		err = niErr
 		return
@@ -371,8 +345,7 @@ func (packer *Packer) DumpTo(w io.Writer) (err error) {
 	buf.Return(2)
 
 	packer.dict.Range(func(_ int, name []byte, value []byte) bool {
-		packer.writeLiteral(buf, name)
-		packer.writeLiteral(buf, value)
+		packer.writeLiteralFieldWithoutNameReference(buf, name, value)
 		return true
 	})
 
@@ -432,25 +405,14 @@ func (packer *Packer) LoadFrom(r io.Reader) (err error) {
 		err = mpErr
 		return
 	}
-	maxHeaderSize := binary.LittleEndian.Uint16(mp)
+	maxSize := binary.LittleEndian.Uint16(mp)
 	bLen -= 2
 
 	hw := new(HeaderFields)
 	for {
-		name, nameErr := packer.readLiteral(buf)
-		if nameErr != nil {
-			err = nameErr
+		if err = packer.readLiteralFieldWithoutNameReference(buf, hw); err != nil {
 			break
 		}
-		value, valueErr := packer.readLiteral(buf)
-		if valueErr != nil {
-			err = valueErr
-			break
-		}
-		if len(name) == 0 {
-			continue
-		}
-		hw.Set(name, value)
 	}
 
 	if errors.Is(err, io.EOF) {
@@ -459,7 +421,7 @@ func (packer *Packer) LoadFrom(r io.Reader) (err error) {
 		return
 	}
 
-	packer.maxHeaderBytes = int(maxHeaderSize)
+	packer.maxHeaderBytes = int(maxSize)
 	packer.dict.Load(hw.fields)
 	return
 }
