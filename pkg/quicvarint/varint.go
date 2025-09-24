@@ -21,12 +21,22 @@ const (
 	maxVarInt8 = 4611686018427387903
 )
 
+var (
+	ErrInvalidFormat = errors.New("invalid QUIC varint format")
+)
+
 // Read reads a number in the QUIC varint format from r.
 func Read(r io.Reader) (uint64, error) {
 	br := NewReader(r)
 	firstByte, err := br.ReadByte()
 	if err != nil {
 		return 0, err
+	}
+	switch firstByte >> 6 {
+	case 0, 1, 2, 3:
+		break
+	default:
+		return 0, ErrInvalidFormat
 	}
 	// the first two bits of the first byte encode the length
 	l := 1 << ((firstByte & 0xc0) >> 6)
@@ -100,7 +110,7 @@ func Parse(b []byte) (uint64 /* value */, int /* bytes consumed */, error) {
 		return binary.BigEndian.Uint64(b) & 0x3fffffffffffffff, 8, nil
 	}
 
-	return 0, 0, errors.New("unreachable")
+	return 0, 0, ErrInvalidFormat
 }
 
 // Append appends i in the QUIC varint format.
